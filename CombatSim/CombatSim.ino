@@ -1,5 +1,5 @@
 /*
-  Author: Natalie Harris and Brenna Bentley
+  Authors: Natalie Harris and Brenna Bentley
 
 
 */
@@ -8,6 +8,7 @@
 #include <SparkFunSerialGraphicLCD.h>
 #include <ezButton.h>
 #include <Vector.h>
+#include <Servo.h> // for the radar spin
 
 // pin assignments
 #define RX_PIN 2
@@ -16,9 +17,11 @@
 #define panic_PIN 5
 #define allClear_PIN 6
 #define radar_PIN 7
+#define servo_PIN 8
 
 #define BAUD_RATE 115200
 #define FRAME_LENGTH 150
+#define DEBOUNCE_TIME 50
 #define MAX_X 127
 #define MAX_Y 63
 
@@ -116,8 +119,6 @@ void drawTurret(LCD lcd, byte x, byte y) {
 void drawShip(LCD lcd) {
   lcd.drawCircle(-120, 32, 150, 1);
 
-  lcd.drawBox(11, 17, 16, 11, 1);
-
   drawTurret(lcd, TURRET_1_X, TURRET_1_Y);
   drawTurret(lcd, TURRET_2_X, TURRET_2_Y);
 
@@ -126,17 +127,18 @@ void drawShip(LCD lcd) {
 SoftwareSerial mySerial(RX_PIN, TX_PIN); // Create a software serial port
 LCD lcd; // Create an instance of the SparkFunSerialGraphicLCD class
 
-ezButton missileButton(missile_PIN);
-int missileMode = 1;
+Servo radar; // used to control servo motor
+int pos = 0;
 
+// button assignments
+ezButton missileButton(missile_PIN);
+int missileMode = 0;
 ezButton panicButton(panic_PIN);
 int panicMode = 0;
-
 ezButton allClearButton(allClear_PIN);
 int allClearMode = 0;
-
 ezButton radarButton(radar_PIN);
-int radarMode = 1;
+int radarMode = 0;
 
 const int numTurrets = 2;
 
@@ -161,6 +163,7 @@ Asteroid* ast1 = new Asteroid();
 Asteroid* ast2 = new Asteroid();
 Asteroid* ast3 = new Asteroid();
 Asteroid* ast4 = new Asteroid();
+Asteroid* ast5 = new Asteroid();
 
 Asteroid** asteroids = new Asteroid*[10];
 
@@ -168,56 +171,81 @@ Asteroid** asteroids = new Asteroid*[10];
 int Asteroid::move() {
   x -= x_speed;
   y += y_speed;
-  if (x < 0 || y > MAX_Y || y < 0) {
+  if (x < 28 || y > MAX_Y || y < 0) {
     this->reset();
   }    
 }
 
 void setup() {
+
+  // for rotating the radar
+  radar.attach(servo_PIN);   // attach the servo to pin 8
+
   mySerial.begin(BAUD_RATE); // Initialize the software serial port
-  Serial.begin(9600);
+  Serial.begin(BAUD_RATE);
   //lcd.begin(mySerial); // Initialize the LCD
+
+  //initialize button debounce times
+  missileButton.setDebounceTime(DEBOUNCE_TIME);
+  panicButton.setDebounceTime(DEBOUNCE_TIME);
+  allClearButton.setDebounceTime(DEBOUNCE_TIME);
+  radarButton.setDebounceTime(DEBOUNCE_TIME);
+
   lcd.clearScreen();
-
-  // set up shots vector
-  // for (int i = 0; i < numTurrets * 3; i++) {
-  //   Shot tempShot = new Shot();
-  //   shots.push_back(const Shot &value)
-  // }
-
-  // set up asteroids vector
-  for (int i = 0; i < 10; i++) {
-    asteroids[i] = new Asteroid();
-  }
-
 
   delay(FRAME_LENGTH);
   //lcd.toggleReverseMode(); // ONLY use this if the lcd is in light mode
 }
 
 void loop() {
-  //lcd.toggleReverseMode();
+  
+  // get button states
+  missileButton.loop();
+  if (missileButton.isPressed()) missileMode = 1; // if button is pressed, toggle bool mode
+  panicButton.loop();  
+  if (panicButton.isPressed()) panicMode = 1;
+  allClearButton.loop();
+  if (allClearButton.isPressed()) panicMode = 0;
+  radarButton.loop();
+  if (radarButton.isPressed()) radarMode = !radarMode;
+
+  // clears frame and draws static parts of image (hull, turrets)
   lcd.clearScreen();
   drawShip(lcd);
 
-  missileButton.loop();
-  //missileMode = missileButton.getState();
-  //missileMode = true;
-  panicMode = true;
+  // Debugging code for buttons
+  Serial.print("Missiles: ");
+  Serial.println(missileMode);
+  Serial.print("Panic: ");
+  Serial.println(panicMode);
+  Serial.print("Radar: ");
+  Serial.println(radarMode);
+  Serial.println();
 
+  // spins the radar in a funny circle
+  if (true) { // if radar mode is true, move the servo
+    radar.write(pos); // move the servo to the current position
+    delay(15); // wait for the servo to reach the position
+    
+    pos -= 1; // decrement the servo position by 1 degree
+    if (pos < 0) { // if we have reached 0 degrees, reset to 180
+      pos = 180;
+    }
+  }
+
+
+  // panic mode draws asteroids to the screen
   if (panicMode) {
-
     ast1->drawAsteroid(lcd);
     ast1->move();
-
     ast2->drawAsteroid(lcd);
     ast2->move();
-
     ast3->drawAsteroid(lcd);
     ast3->move();
-
     ast4->drawAsteroid(lcd);
-    ast4->move();
+    ast4->move();    
+    ast5->drawAsteroid(lcd);
+    ast5->move();
   }
 
   if (missileMode) {
